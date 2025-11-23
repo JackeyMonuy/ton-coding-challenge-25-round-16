@@ -1,0 +1,33 @@
+;; Filename: FailureHandler.tlk
+;; Contract B: Receives the notification and executes a catastrophic failure procedure.
+;; 合约 B：接收通知，并执行灾难性故障程序。
+
+#include "stdlib.tlk"
+
+;; Primary function that guarantees a failure
+() execute_catastrophic_failure() impure {
+    
+    ;; Check and ignore incoming bounce messages
+    slice msg_slice = in_msg_full().begin_parse(); 
+    int flags = msg_slice.load_uint(6);
+    
+    if (flags & 1) {
+        "FailureHandler: Received an error notification, halting." print;
+        return;
+    }
+    
+    ;; --- RichBounce Trigger ---
+    
+    "FailureHandler: Incoming notification received. Initiating protocol termination." print;
+    
+    ;; **Action:** Use throw with a new, distinct error code (9999)
+    ;; This triggers the RichBounce mechanism back to the sender (AsyncNotifier).
+    throw(9999); 
+    
+    ;; Execution halts here.
+}
+
+;; Standard entry point for internal messages
+() recv_internal(int balance, int msg_value, cell in_msg_full, cell in_msg_body) impure {
+    execute_catastrophic_failure();
+}
