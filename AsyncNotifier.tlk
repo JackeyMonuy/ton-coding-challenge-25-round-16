@@ -1,0 +1,64 @@
+;; Filename: AsyncNotifier.tlk
+;; Contract A: Sends a notification message (Async) and is designed to process the subsequent error notification (RichBounce).
+;; 合约 A：发送一个通知消息 (Async)，并被设计来处理随后的错误通知 (RichBounce)。
+
+#include "stdlib.tlk"
+
+;; Define the handler for the error notification (RichBounce)
+() process_error_notification(cell notification_data) impure inline {
+    
+    ;; Store the error cell in c2 for debugging/state logging
+    c2 = notification_data;
+    
+    ;; Log successful capture
+    "AsyncNotifier: Error notification (RichBounce) successfully received and processed." print;
+    
+    ;; Analyze the error OP code (usually 0xFFFFFFFF for RichBounce)
+    slice data_s = notification_data.begin_parse();
+    int op = data_s.load_uint(32); 
+    "Notification Op Code:" print_int; op print_int;
+    
+    return;
+}
+
+;; Main receiver function
+() recv_internal(int balance, int msg_value, cell in_msg_full, cell in_msg_body) impure {
+    
+    ;; Step 1: Check if the incoming message is a bounce
+    slice header_slice = in_msg_full.begin_parse();
+    int flags = header_slice.load_uint(6);
+    
+    if (flags & 1) {
+        ;; Process the error notification (RichBounce)
+        process_error_notification(in_msg_body);
+        return;
+    }
+    
+    ;; --- Step 2: Send Notification (Async) ---
+    
+    ;; Target address B (Unique Placeholder: 0xC0FFEE42)
+    cell target_b_addr_cell = begin_cell().store_uint(0xC0FFEE42, 32).end_cell(); 
+    slice target_b_addr = target_b_addr_cell.begin_parse();
+
+    ;; Create the notification body with a unique op code (0x5A5A5A5A)
+    cell notification_body = begin_cell()
+        .store_uint(0x5A5A5A5A, 32) ;; Unique Notification op code
+        .store_slice(in_msg_body.begin_parse()) ;; Embed the original payload
+        .end_cell();
+
+    ;; Send the message to B. 
+    ;; Use Mode 64: Sends message, paying storage fees from message value. Bounceable by default.
+    send_raw_message(
+        begin_cell()
+            .store_slice(target_b_addr)
+            .store_coins(1000000) ;; Send 0.001 TON
+            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+            .store_uint(0, 1) ;; no init
+            .store_uint(0, 1) ;; no data
+            .store_ref(notification_body)
+        .end_cell(), 
+        64 
+    );
+
+    "AsyncNotifier: Notification sent (OP: 0x5A5A5A5A). Awaiting error response." print;
+}
